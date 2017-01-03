@@ -8,7 +8,7 @@ define ipmi::network (
   $type = 'dhcp',
   $lan_channel = 1,
   $interface = 'failover',
-  $vlan = 0,
+  $vlan = undef,
 )
 {
   require ::ipmi
@@ -55,9 +55,13 @@ ${lan_channel}"], Exec["ipmi_set_netmask_${lan_channel}"]],
     }
   }
 
-  # I'm not sure if this is supported everywhere but going by these documents:
-  # http://serverfault.com/questions/361940/configuring-supermicro-ipmi-to-use-one-of-the-lan-interfaces-instead-of-the-ipmi
-  # https://asgardahost.org/useful-raw-commands-for-supermicro-ipmi-modules/
+  # Setting the interface to use is not part of the IPMI specification so we 
+  # will need to detect the BMC type and posibly firmware version. References:
+  # Supermicro: 
+  # * http://serverfault.com/questions/361940/configuring-supermicro-ipmi-to-use-one-of-the-lan-interfaces-instead-of-the-ipmi
+  # * https://asgardahost.org/useful-raw-commands-for-supermicro-ipmi-modules/
+  # Dell (DRAC):
+  # * http://www.theprojectbot.com/ipmitool-cheatsheet-and-configuring-drac-from-ipmitool/
   # 
   # They outline that the network interface can be in three states:
   #   0x00 = Dedicated
@@ -86,6 +90,22 @@ ${lan_channel}"], Exec["ipmi_set_netmask_${lan_channel}"]],
   exec { "ipmi_set_interface_$interface":
     command => "/usr/bin/ipmitool raw 0x30 0x70 0xc 1 1 $interface_mode_number",
     onlyif  => "/usr/bin/test \"$(ipmitool raw 0x30 0x70 0x0c 0)\" != \"${interface_mode_number}\"",
+  }
+
+
+  # VLAN change
+  # Supports up to VLAN ID 4094
+  # Supermicro have a different take on the spec compared to the ipmitool devs:
+  #  http:// $some mailing list
+  # 
+  # info from supermicro about an X8 motherboard(tested and working in a H8DGU):
+  # http://www.supermicro.co.uk/support/faqs/faq.cfm?faq=11345
+
+  if (!$vlan) or ($vlan == 0) {
+    #disable VLAN
+    exec { "ipmi_set_vlan_$vlan":
+      commnd => "ipmitool raw 0x0c 0x1 1 20 0x2 0x0",
+    }
   }
 
 }
